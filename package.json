@@ -1,6 +1,6 @@
 {
   "name": "@tracht-digital-solutions/tds-ext-contact-tickets",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "description": "Contact-tickets extension for the TDS panel platform: public contact-form inbox (contact_message) via frontend-contract.",
   "license": "UNLICENSED",
   "private": false,
@@ -32,6 +32,7 @@
     "@tracht-digital-solutions/tds-frontend-contract": "^1.0.0"
   },
   "peerDependencies": {
+    "@tracht-digital-solutions/tds-shared": ">=0.14.0",
     "astro": ">=6",
     "react": ">=18",
     "react-dom": ">=18"

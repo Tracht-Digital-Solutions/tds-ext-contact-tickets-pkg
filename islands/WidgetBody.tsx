@@ -13,5 +13,5 @@ export default function NewContactCount() {
       alive = false;
     };
   }, []);
-  return <p className="widget__metric">{n === null ? "…" : n}</p>;
+  return <p className="tds-widget__metric">{n === null ? "…" : n}</p>;
 }

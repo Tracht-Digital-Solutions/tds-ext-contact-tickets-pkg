@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Spinner } from "@tracht-digital-solutions/tds-shared/components";
 
 interface Message {
   id: number;
@@ -81,7 +82,7 @@ export default function ContactInbox() {
       </div>
 
       {messages === null ? (
-        <p>Wird geladen …</p>
+        <p role="status"><Spinner /></p>
       ) : messages.length === 0 ? (
         <p>Keine Anfragen.</p>
       ) : (
@@ -155,7 +156,7 @@ function MessageView({ id, onBack }: { id: number; onBack: () => void }) {
     <div className="contact-detail">
       <button type="button" onClick={onBack}>← Posteingang</button>
       {msg === null ? (
-        <p>Wird geladen …</p>
+        <p role="status"><Spinner /></p>
       ) : (
         <>
           <header className="contact-detail__head">
@@ -195,7 +196,7 @@ function MessageView({ id, onBack }: { id: number; onBack: () => void }) {
               rows={8}
               placeholder={`Antwort an ${msg.name} …`}
             />
-            {status ? <p className="status-pill status-pill--info">{status}</p> : null}
+            {status ? <p className="tds-alert" role="status">{status}</p> : null}
             <button type="button" onClick={send} disabled={busy}>Antwort senden</button>
           </div>
         </>
