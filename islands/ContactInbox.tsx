@@ -96,7 +96,7 @@ export default function ContactInbox() {
                 </span>
                 {m.subject ? <span className="contact-inbox__subject">{m.subject}</span> : null}
               </button>
-              <span className="contact-inbox__actions">
+              <span className="tds-toolbar">
                 {m.status !== "handled" ? (
                   <button type="button" onClick={() => setStatus(m, "handled")}>Erledigt</button>
                 ) : null}
@@ -159,7 +159,7 @@ function MessageView({ id, onBack }: { id: number; onBack: () => void }) {
         <p role="status"><Spinner /></p>
       ) : (
         <>
-          <header className="contact-detail__head">
+          <header className="tds-row tds-row--between">
             <h2>{msg.subject || "Ohne Betreff"}</h2>
             <p>
               <strong>{msg.name}</strong> &lt;{msg.email}&gt;
@@ -170,15 +170,15 @@ function MessageView({ id, onBack }: { id: number; onBack: () => void }) {
             </span>
           </header>
 
-          <div className="contact-detail__body">{msg.message}</div>
+          <div className="tds-stack">{msg.message}</div>
 
           {msg.replies.length > 0 ? (
-            <div className="contact-detail__replies">
+            <div className="tds-stack">
               <h3>Antworten</h3>
               <ul>
                 {msg.replies.map((r) => (
                   <li key={r.id}>
-                    <div className="contact-detail__reply-meta">
+                    <div className="marginalia">
                       {r.sent_by ?? "Admin"} · {r.created_at}
                     </div>
                     <div className="contact-detail__reply-body">{r.body}</div>
@@ -188,7 +188,7 @@ function MessageView({ id, onBack }: { id: number; onBack: () => void }) {
             </div>
           ) : null}
 
-          <div className="contact-detail__compose">
+          <div className="tds-compose">
             <h3>Antworten</h3>
             <textarea
               value={reply}
