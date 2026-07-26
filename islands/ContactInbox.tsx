@@ -86,9 +86,9 @@ export default function ContactInbox() {
       ) : messages.length === 0 ? (
         <p>Keine Anfragen.</p>
       ) : (
-        <ul className="contact-inbox__list">
+        <ul className="tds-list">
           {messages.map((m) => (
-            <li key={m.id} className="contact-inbox__row">
+            <li key={m.id} className="tds-list__row">
               <button type="button" className="contact-inbox__open" onClick={() => setOpenId(m.id)}>
                 <span className="contact-inbox__from">
                   <strong>{m.name}</strong> &lt;{m.email}&gt;
