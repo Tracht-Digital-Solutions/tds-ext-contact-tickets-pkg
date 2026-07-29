@@ -42,6 +42,50 @@ is the dedicated public inbox.
   → auto-handle); frontend detail view (full body + reply history + compose).
 - **TODO (next):** optional forward to support-tickets; per-message spam heuristics.
 
+## Tests
+
+```bash
+npm run test:run    # vitest, 85 tests (jsdom per-file via a @vitest-environment docblock)
+```
+
+- `islands/ContactInbox.test.tsx` — triage + the detail view + the email reply.
+  Every message came from a stranger on the public marketing site, so a non-OK
+  response is asserted never to put their name, address or words on screen.
+  Beyond that: the triage PATCH sends the status that was *asked for* and the
+  reload afterwards keeps the **current filter** (reloading under a hardcoded
+  one swaps the list out from under the highlighted chip), and the reply
+  distinguishes **503 "mail not configured"** from any other failure — the
+  first means the answer was never sent and will not be until the host is
+  fixed, which does not belong under a generic error.
+- `islands/WidgetBody.test.tsx` — the unanswered-request count.
+- `src/index.test.ts` + `tests/packaging.test.ts` — the manifest as a product
+  build sees it, and that every specifier resolves, is exported, and ships.
+
+Error-path tests deliberately answer with a POPULATED body and a non-OK status.
+Against an EMPTY error body `r.ok ? r.json() : { messages: [] }` and a bare
+`r.json()` are indistinguishable, so the ok-check could be deleted with no test
+noticing.
+
+`tests/packaging.test.ts` pins the version to the **0.2** line — `tds-admin-frontend`
+caret-pins `^0.2.1`, and under 0.x a caret means `>=0.2.1 <0.3.0`. (The root
+`CLAUDE.md` says all extensions stay in `0.1.x`; that is not universal — this
+one is 0.2.x and support-tickets is 0.7.x. The real rule is: never leave the
+minor line your consumers pin.)
+
+Three tests exist only because the mutation pass proved the obvious versions
+blind: the widget's `Number()` coercion is invisible against `"5"` (it uses a
+zero-padded `"05"` instead), clearing a stale error before a retry is invisible
+unless asserted **while the retry is in flight**, and the detail view's ok-check
+had no test at all.
+
+> **Behaviour worth knowing:** a failed detail load leaves the view on its
+> "Wird geladen …" line forever — pinned as-is rather than changed in a
+> test-only pass, but a real error state would be friendlier. Likewise
+> `WidgetBody` shows `0` on a failure where the lexware/time-tracker widgets
+> show `—`.
+
+Verified by mutation: 44 deliberate breakages introduced, 44 caught.
+
 ## After a change
 
 Bump `version` in `package.json` + `composer.json` (lockstep), update docs, commit.
