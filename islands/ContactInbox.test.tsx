@@ -114,7 +114,7 @@ describe("the inbox", () => {
 
   it("shows a loading line until the list arrives", () => {
     render(<ContactInbox />);
-    expect(screen.getByText("Wird geladen …")).toBeTruthy();
+    expect(screen.getByLabelText("Wird geladen")).toBeTruthy();
   });
 
   it("offers every triage filter", async () => {
@@ -336,7 +336,7 @@ describe("reading a message", () => {
     await u.click(await screen.findByRole("button", { name: /Erika Muster/ }));
     await waitFor(() => expect(sent("GET", /^\/contact\/messages\/7$/)).toHaveLength(1));
     expect(screen.queryByText("Guten Tag, wir bräuchten eine neue Website.")).toBeNull();
-    expect(screen.getByText("Wird geladen …")).toBeTruthy();
+    expect(screen.getByLabelText("Wird geladen")).toBeTruthy();
   });
 
   it("returns to the inbox and re-reads the list", async () => {

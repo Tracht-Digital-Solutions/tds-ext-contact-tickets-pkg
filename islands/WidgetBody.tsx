@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Skeleton } from "@tracht-digital-solutions/tds-shared/components";
 
 /** "Neue Anfragen" widget body — the count of unhandled contact messages. */
 export default function NewContactCount() {
@@ -13,5 +14,7 @@ export default function NewContactCount() {
       alive = false;
     };
   }, []);
-  return <p className="tds-widget__metric">{n === null ? "…" : n}</p>;
+  return <p className="tds-widget__metric" aria-busy={n === null}>
+      {n === null ? <Skeleton width="3ch" height="1.75rem" /> : n}
+    </p>;
 }

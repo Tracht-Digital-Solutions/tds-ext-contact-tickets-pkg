@@ -67,13 +67,14 @@ export default function ContactInbox() {
   }
 
   return (
-    <div className="contact-inbox">
-      <div className="contact-inbox__filter">
+    <div className="tds-stack">
+      <div className="tds-toolbar">
         {["new", "handled", "spam", ""].map((s) => (
           <button
             key={s || "all"}
             type="button"
             className={`chip chip--${filter === s ? "info" : "neutral"}`}
+            aria-pressed={filter === s}
             onClick={() => setFilter(s)}
           >
             {s === "" ? "Alle" : s === "new" ? "Neu" : s === "handled" ? "Erledigt" : "Spam"}
@@ -82,26 +83,30 @@ export default function ContactInbox() {
       </div>
 
       {messages === null ? (
-        <p role="status"><Spinner /></p>
+        <p><Spinner /></p>
       ) : messages.length === 0 ? (
-        <p>Keine Anfragen.</p>
+        <p className="tds-empty">Keine Anfragen.</p>
       ) : (
         <ul className="tds-list">
           {messages.map((m) => (
             <li key={m.id} className="tds-list__row">
-              <button type="button" className="contact-inbox__open" onClick={() => setOpenId(m.id)}>
-                <span className="contact-inbox__from">
+              <button type="button" className="btn btn-ghost tds-row" onClick={() => setOpenId(m.id)}>
+                <span>
                   <strong>{m.name}</strong> &lt;{m.email}&gt;
                   {m.company ? <em> · {m.company}</em> : null}
                 </span>
-                {m.subject ? <span className="contact-inbox__subject">{m.subject}</span> : null}
+                {m.subject ? <span>{m.subject}</span> : null}
               </button>
               <span className="tds-toolbar">
                 {m.status !== "handled" ? (
-                  <button type="button" onClick={() => setStatus(m, "handled")}>Erledigt</button>
+                  <button type="button" className="btn btn-ghost" onClick={() => setStatus(m, "handled")}>
+                    Erledigt
+                  </button>
                 ) : null}
                 {m.status !== "spam" ? (
-                  <button type="button" onClick={() => setStatus(m, "spam")}>Spam</button>
+                  <button type="button" className="btn btn-danger" onClick={() => setStatus(m, "spam")}>
+                    Spam
+                  </button>
                 ) : null}
               </span>
             </li>
@@ -153,10 +158,12 @@ function MessageView({ id, onBack }: { id: number; onBack: () => void }) {
   };
 
   return (
-    <div className="contact-detail">
-      <button type="button" onClick={onBack}>← Posteingang</button>
+    <div className="tds-stack">
+      <button type="button" className="btn btn-ghost" onClick={onBack}>
+        ← Posteingang
+      </button>
       {msg === null ? (
-        <p role="status"><Spinner /></p>
+        <p><Spinner /></p>
       ) : (
         <>
           <header className="tds-row tds-row--between">
@@ -181,7 +188,7 @@ function MessageView({ id, onBack }: { id: number; onBack: () => void }) {
                     <div className="marginalia">
                       {r.sent_by ?? "Admin"} · {r.created_at}
                     </div>
-                    <div className="contact-detail__reply-body">{r.body}</div>
+                    <div>{r.body}</div>
                   </li>
                 ))}
               </ul>
@@ -191,13 +198,23 @@ function MessageView({ id, onBack }: { id: number; onBack: () => void }) {
           <div className="tds-compose">
             <h3>Antworten</h3>
             <textarea
+              className="field-boxed"
               value={reply}
               onChange={(e) => setReply(e.target.value)}
               rows={8}
               placeholder={`Antwort an ${msg.name} …`}
             />
             {status ? <p className="tds-alert" role="status">{status}</p> : null}
-            <button type="button" onClick={send} disabled={busy}>Antwort senden</button>
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={send}
+              disabled={busy}
+              aria-busy={busy}
+            >
+              {busy ? <Spinner size="sm" /> : null}
+              Antwort senden
+            </button>
           </div>
         </>
       )}
