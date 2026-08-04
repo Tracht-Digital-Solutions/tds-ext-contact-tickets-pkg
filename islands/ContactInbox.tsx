@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Spinner } from "@tracht-digital-solutions/tds-shared/components";
+import { Spinner, toast } from "@tracht-digital-solutions/tds-shared/components";
 
 interface Message {
   id: number;
@@ -148,12 +148,13 @@ function MessageView({ id, onBack }: { id: number; onBack: () => void }) {
     setBusy(false);
     if (res.ok) {
       setReply("");
-      setStatus("Antwort gesendet.");
+      toast.success("Antwort gesendet.");
+      setStatus(null);
       load();
     } else if (res.status === 503) {
       setStatus("E-Mail-Versand ist nicht konfiguriert.");
     } else {
-      setStatus(`Fehler (HTTP ${res.status}).`);
+      toast.danger(`Antwort konnte nicht gesendet werden (HTTP ${res.status}).`);
     }
   };
 
@@ -204,7 +205,10 @@ function MessageView({ id, onBack }: { id: number; onBack: () => void }) {
               rows={8}
               placeholder={`Antwort an ${msg.name} …`}
             />
-            {status ? <p className="tds-alert" role="status">{status}</p> : null}
+            {/* Validation and the "email not configured" hint stay here —
+                the first names something to fix in the box above it, the second
+                something an operator has to go and set. */}
+            {status ? <p className="tds-alert tds-alert--danger" role="alert">{status}</p> : null}
             <button
               type="button"
               className="btn btn-primary"
