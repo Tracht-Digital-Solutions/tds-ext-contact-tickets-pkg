@@ -22,6 +22,12 @@ is the dedicated public inbox.
 
 ## Gotchas
 
+- **The reply outcome is a toast (tds-shared `>=0.16.0`); the two things that
+  are NOT outcomes stay in-flow** — "Antwort darf nicht leer sein." (validation,
+  next to the box it is about) and "E-Mail-Versand ist nicht konfiguriert."
+  (something an operator has to go and set). That banner is `.tds-alert--danger`
+  now. Never mount a `ToastHost` here; the frontend host owns the one.
+
 - Migration class names are **module-prefixed** (`ContactTickets*`) AND the
   numeric **version prefixes are globally unique** (this module owns the
   `20260726*` band) — every composed module's migrations share one `phinxlog`,

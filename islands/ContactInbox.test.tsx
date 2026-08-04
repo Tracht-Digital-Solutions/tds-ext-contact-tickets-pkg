@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import ContactInbox from "./ContactInbox";
+import { TOAST_EVENT } from "@tracht-digital-solutions/tds-shared/toast";
 
 /**
  * The contact-form inbox: triage (new → handled/spam) and the detail view with
@@ -66,7 +67,15 @@ const DETAIL = {
   replies: [] as Array<{ id: number; body: string; sent_by: string | null; created_at: string }>,
 };
 
+/** Outcomes are toasts now — collected off the `tds:toast` bus. */
+let toasts: Array<{ variant: string; message: string }> = [];
+const collectToast = (e: Event) => {
+  toasts.push((e as CustomEvent<{ variant: string; message: string }>).detail);
+};
+
 beforeEach(() => {
+  toasts = [];
+  window.addEventListener(TOAST_EVENT, collectToast);
   calls = [];
   gate = null;
   handlers = [() => ({ status: 200, body: {} })];
@@ -84,7 +93,10 @@ beforeEach(() => {
   );
 });
 
-afterEach(() => cleanup());
+afterEach(() => {
+  window.removeEventListener(TOAST_EVENT, collectToast);
+  cleanup();
+});
 
 const user = () => userEvent.setup({ delay: null });
 const sent = (method: string, match: RegExp) => calls.filter((c) => c.method === method && match.test(c.url));
@@ -396,7 +408,7 @@ describe("replying by email", () => {
     const u = await openReply();
     await u.type(box(), "Guten Tag, gerne.");
     await u.click(screen.getByRole("button", { name: "Antwort senden" }));
-    expect(await screen.findByText("Antwort gesendet.")).toBeTruthy();
+    await waitFor(() => expect(toasts.some((t) => t.variant === "success" && t.message.includes("Antwort gesendet"))).toBe(true));
     expect((box() as HTMLTextAreaElement).value).toBe("");
     await waitFor(() => expect(sent("GET", /^\/contact\/messages\/7$/).length).toBeGreaterThan(1));
   });
@@ -416,7 +428,7 @@ describe("replying by email", () => {
     const u = await openReply();
     await u.type(box(), "Guten Tag, gerne.");
     await u.click(screen.getByRole("button", { name: "Antwort senden" }));
-    expect(await screen.findByText("Fehler (HTTP 500).")).toBeTruthy();
+    await waitFor(() => expect(toasts.some((t) => t.variant === "danger" && t.message.includes("500"))).toBe(true));
   });
 
   it("does NOT claim the reply was sent when it failed", async () => {
@@ -424,8 +436,8 @@ describe("replying by email", () => {
     const u = await openReply();
     await u.type(box(), "Guten Tag, gerne.");
     await u.click(screen.getByRole("button", { name: "Antwort senden" }));
-    await screen.findByText("Fehler (HTTP 500).");
-    expect(screen.queryByText("Antwort gesendet.")).toBeNull();
+    await waitFor(() => expect(toasts.some((t) => t.variant === "danger" && t.message.includes("500"))).toBe(true));
+    expect(toasts.some((t) => t.message.includes("Antwort gesendet"))).toBe(false);
   });
 
   it("KEEPS the typed reply when sending fails", async () => {
@@ -434,7 +446,7 @@ describe("replying by email", () => {
     const u = await openReply();
     await u.type(box(), "Guten Tag, gerne.");
     await u.click(screen.getByRole("button", { name: "Antwort senden" }));
-    await screen.findByText("Fehler (HTTP 500).");
+    await waitFor(() => expect(toasts.some((t) => t.variant === "danger" && t.message.includes("500"))).toBe(true));
     expect((box() as HTMLTextAreaElement).value).toBe("Guten Tag, gerne.");
   });
 
@@ -443,7 +455,7 @@ describe("replying by email", () => {
     const u = await openReply();
     await u.type(box(), "Guten Tag, gerne.");
     await u.click(screen.getByRole("button", { name: "Antwort senden" }));
-    await screen.findByText("Fehler (HTTP 500).");
+    await waitFor(() => expect(toasts.some((t) => t.variant === "danger" && t.message.includes("500"))).toBe(true));
     expect(sent("GET", /^\/contact\/messages\/7$/)).toHaveLength(1);
   });
 
@@ -461,7 +473,7 @@ describe("replying by email", () => {
     await waitFor(() => expect(replies()).toHaveLength(1));
     expect(screen.queryByText("Antwort darf nicht leer sein.")).toBeNull();
     release();
-    await screen.findByText("Antwort gesendet.");
+    await waitFor(() => expect(toasts.some((t) => t.variant === "success" && t.message.includes("Antwort gesendet"))).toBe(true));
   });
 
   it("re-enables the send button afterwards", async () => {
@@ -469,7 +481,7 @@ describe("replying by email", () => {
     await u.type(box(), "Guten Tag, gerne.");
     const button = screen.getByRole("button", { name: "Antwort senden" }) as HTMLButtonElement;
     await u.click(button);
-    await screen.findByText("Antwort gesendet.");
+    await waitFor(() => expect(toasts.some((t) => t.variant === "success" && t.message.includes("Antwort gesendet"))).toBe(true));
     expect(button.disabled).toBe(false);
   });
 });
