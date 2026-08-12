@@ -4,6 +4,7 @@ declare(strict_types=1);
 namespace Tds\Ext\ContactTickets;
 
 use PDO;
+use Psr\Container\ContainerInterface;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 use Slim\App;
@@ -11,6 +12,7 @@ use Tds\Ext\ContactTickets\Domain\ContactRepository;
 use Tds\Frontend\Contract\AbstractModule;
 use Tds\Frontend\Contract\Email;
 use Tds\Frontend\Contract\Mailer;
+use Tds\Frontend\Contract\NotificationSource;
 use Tds\Frontend\Contract\PermissionDef;
 use Tds\Frontend\Contract\UserContext;
 
@@ -20,9 +22,12 @@ use Tds\Frontend\Contract\UserContext;
  * a contact_message, and (best-effort) the admin is notified via the core Mailer.
  * The admin inbox (`/contact/*`) is gated by `contact:read`/`contact:write`.
  */
-final class ContactTicketsModule extends AbstractModule
+final class ContactTicketsModule extends AbstractModule implements NotificationSource
 {
     private const STATUSES = ['new', 'handled', 'spam'];
+
+    /** Most new requests one notification poll announces. */
+    private const NOTIFY_MAX = 10;
 
     /** Public-form rate limit: at most N submissions per IP per window. */
     private const RATE_MAX = 5;
@@ -48,9 +53,20 @@ final class ContactTicketsModule extends AbstractModule
         return [__DIR__ . '/../db/migrations'];
     }
 
+    /**
+     * The app container, kept from {@see register()}.
+     *
+     * {@see notifications()} is called outside a route, so it has no `$app` to
+     * resolve the repository from. The registry holds this module instance for
+     * the life of the request, and `registerAll()` always runs at boot, so the
+     * reference is set before any feed poll can arrive.
+     */
+    private ?ContainerInterface $container = null;
+
     public function register(App $app): void
     {
         $c = $app->getContainer();
+        $this->container = $c;
         if ($c !== null && !$c->has(ContactRepository::class)) {
             $c->set(ContactRepository::class, static fn ($c) => new ContactRepository($c->get(PDO::class)));
         }
@@ -92,9 +108,32 @@ final class ContactTicketsModule extends AbstractModule
             if (($deny = self::require($c->get(UserContext::class), 'contact:read', $res)) !== null) {
                 return $deny;
             }
-            $status = $req->getQueryParams()['status'] ?? null;
+            $query = $req->getQueryParams();
+
+            // Every parameter goes through an allow-list and an unknown value
+            // falls back to the default rather than 422-ing: these come from
+            // chips and selects, so a bad one means a stale bookmark, not a
+            // caller worth failing.
+            $status = $query['status'] ?? null;
             $status = in_array($status, self::STATUSES, true) ? (string) $status : null;
-            return self::json($res, ['messages' => $c->get(ContactRepository::class)->list($status)]);
+
+            $q = trim((string) ($query['q'] ?? ''));
+            $q = $q === '' ? null : mb_substr($q, 0, 120);
+
+            $sort = (string) ($query['sort'] ?? 'created_at');
+            $sort = in_array($sort, ContactRepository::sortKeys(), true) ? $sort : 'created_at';
+            $desc = strtolower((string) ($query['dir'] ?? 'desc')) !== 'asc';
+
+            $limit = (int) ($query['limit'] ?? 200);
+            $limit = $limit > 0 ? $limit : 200;
+
+            return self::json($res, [
+                'messages' => $c->get(ContactRepository::class)->list($status, $q, $sort, $desc, $limit),
+                // Echoed back so a client can tell "no results for this filter"
+                // from "the server ignored my filter" — the two look identical
+                // in an empty list otherwise.
+                'query' => ['status' => $status, 'q' => $q, 'sort' => $sort, 'dir' => $desc ? 'desc' : 'asc'],
+            ]);
         });
 
         $app->get('/contact/messages/{id:[0-9]+}', function (Request $req, Response $res, array $args) use ($c): Response {
@@ -162,6 +201,73 @@ final class ContactTicketsModule extends AbstractModule
             $repo->setStatus($id, $status);
             return self::json($res, ['ok' => true]);
         });
+    }
+
+    /**
+     * New contact requests since the caller's cursor, for the panel's live
+     * notification feed. The in-panel twin of {@see notifyAdmin()} — the same
+     * event, told to whoever is looking at the panel right now.
+     *
+     * The cursor is the highest `contact_message.id` seen. An id, not a
+     * timestamp: it is monotonic, it is the primary key, and it cannot collide
+     * for two rows inserted in the same second.
+     *
+     * @return array{cursor: string, items: list<array<string,mixed>>}
+     */
+    public function notifications(UserContext $user, ?string $cursor): array
+    {
+        $container = $this->container;
+        if ($container === null) {
+            return ['cursor' => '0', 'items' => []];
+        }
+
+        try {
+            $repo = $container->get(ContactRepository::class);
+
+            // No permission ⇒ no items, but STILL the cursor: granting
+            // `contact:read` tomorrow must not replay everything that arrived
+            // in the meantime.
+            if (!$user->isAuthenticated() || !$user->has('contact:read')) {
+                return ['cursor' => (string) $repo->maxId(), 'items' => []];
+            }
+
+            if ($cursor === null) {
+                // First call — hand back where we are, announce nothing.
+                return ['cursor' => (string) $repo->maxId(), 'items' => []];
+            }
+
+            $after = ctype_digit($cursor) ? (int) $cursor : 0;
+            $rows = $repo->listSince($after, self::NOTIFY_MAX);
+
+            $items = [];
+            $latest = $after;
+            foreach ($rows as $row) {
+                $id = (int) $row['id'];
+                $latest = max($latest, $id);
+                $who = trim((string) $row['name']);
+                $company = trim((string) ($row['company'] ?? ''));
+                $items[] = [
+                    'id' => 'contact-tickets:' . $id,
+                    'module' => 'contact-tickets',
+                    'kind' => 'contact.new',
+                    // One line of plain text: the toast has no title and
+                    // renders a text node, never HTML.
+                    'message' => 'Neue Kontaktanfrage: ' . $who . ($company !== '' ? ' (' . $company . ')' : ''),
+                    'href' => '/kontakt?id=' . $id,
+                    'variant' => 'info',
+                    'created_at' => (string) $row['created_at'],
+                ];
+            }
+
+            // Only advance past what was actually handed over. Taking maxId()
+            // here would skip everything beyond NOTIFY_MAX on a burst.
+            return ['cursor' => (string) $latest, 'items' => $items];
+        } catch (\Throwable) {
+            // No DB configured yet, or a query that failed. The contract says a
+            // source must not throw — the feed (and with it the shell's poll on
+            // every page) matters more than this module's events.
+            return ['cursor' => $cursor ?? '0', 'items' => []];
+        }
     }
 
     // --- helpers ---------------------------------------------------------------

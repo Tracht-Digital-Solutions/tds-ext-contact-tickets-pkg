@@ -33,10 +33,13 @@ beforeEach(() => {
 afterEach(() => cleanup());
 
 describe("the widget", () => {
-  it("fetches its summary endpoint with credentials", () => {
+  it("fetches its summary endpoint with credentials, on the API host", () => {
+    // Absolute, not relative: the panel is a static site on its own host, and
+    // its SPA fallback would answer a relative path with 200 + HTML — so the
+    // json() throws and the catch renders a confident, permanently wrong 0.
     render(<WidgetBody />);
     const fetchMock = fetch as unknown as ReturnType<typeof vi.fn>;
-    expect(fetchMock.mock.calls[0]![0]).toBe("/contact/summary");
+    expect(fetchMock.mock.calls[0]![0]).toBe("https://api.tracht-digital.de/contact/summary");
     expect(fetchMock.mock.calls[0]![1]).toMatchObject({ credentials: "include" });
   });
 

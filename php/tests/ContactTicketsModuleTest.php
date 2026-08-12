@@ -130,4 +130,53 @@ final class ContactTicketsModuleTest extends TestCase
         self::assertSame(401, $this->post($this->appWith(new FakeUser(auth: false)), '/contact/messages/1/reply', ['body' => 'hi'])->getStatusCode());
         self::assertSame(403, $this->post($this->appWith(new FakeUser(perms: ['contact:read'])), '/contact/messages/1/reply', ['body' => 'hi'])->getStatusCode());
     }
+
+    // --- notification feed ---------------------------------------------------
+
+    public function testNotificationsWithoutPermissionYieldNothing(): void
+    {
+        // No container bound yet either — the point is that it answers with a
+        // shape rather than throwing, because the base's feed (and with it the
+        // shell's poll on EVERY page) must not depend on this module behaving.
+        $result = (new ContactTicketsModule())->notifications(new FakeUser(perms: []), '5');
+        self::assertSame([], $result['items']);
+        self::assertArrayHasKey('cursor', $result);
+    }
+
+    public function testNotificationsNeverThrowWithoutADatabase(): void
+    {
+        // A frontend service that boots without DB config is a supported state
+        // (see the core's Bootstrap). The poller still runs on every page.
+        $app = $this->appWith(new FakeUser(admin: true));
+        $module = new ContactTicketsModule();
+        $module->register($app);
+
+        $result = $module->notifications(new FakeUser(admin: true), '5');
+        self::assertSame([], $result['items']);
+        // The cursor it was handed comes back, so a later working poll picks up
+        // where this one left off instead of replaying the backlog.
+        self::assertSame('5', $result['cursor']);
+    }
+
+    public function testTheModuleIsANotificationSource(): void
+    {
+        // The base discovers sources by instanceof; losing the interface would
+        // silently take contact requests out of the feed with nothing failing.
+        self::assertInstanceOf(
+            \Tds\Frontend\Contract\NotificationSource::class,
+            new ContactTicketsModule(),
+        );
+    }
+
+    // --- list query ----------------------------------------------------------
+
+    public function testSortKeysAreAnAllowList(): void
+    {
+        // The list endpoint maps `sort` through this; anything outside it must
+        // never reach an ORDER BY.
+        $keys = \Tds\Ext\ContactTickets\Domain\ContactRepository::sortKeys();
+        self::assertSame(['created_at', 'name', 'email', 'company', 'status'], $keys);
+        self::assertNotContains('message', $keys);
+        self::assertNotContains('ip_hash', $keys);
+    }
 }

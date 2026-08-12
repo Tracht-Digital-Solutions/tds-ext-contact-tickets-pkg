@@ -22,6 +22,32 @@ is the dedicated public inbox.
 
 ## Gotchas
 
+- **Never call the API with a relative path — always `apiFetch` from
+  `@tracht-digital-solutions/tds-shared/api`.** This is the bug that made the
+  whole inbox look empty: the panel is a static site on `management.…`, the API
+  is `api.…`, and the static host answers an unknown path with its SPA fallback
+  — **200 + HTML**. So `res.ok` was `true`, `res.json()` threw, and
+  `.catch(() => setMessages([]))` rendered "Keine Anfragen." forever with the
+  rows sitting in `contact_message`. Nothing logged it. `ContactInbox.test.tsx`
+  now pins the absolute host explicitly, because a relative path passes every
+  behavioural assertion in a mocked-fetch test.
+- **`PATCH` had to be added to the core's CORS allow-list** for triage to work
+  at all cross-origin (`tds-core-frontend-api` `CorsMiddleware`). A method
+  missing there fails at the preflight: the button does nothing and the network
+  tab shows an OPTIONS where you expect a PATCH.
+- **A failed load is an in-flow alert, not an empty list.** "Keine Anfragen." for
+  a 500 is how the original bug hid for months; the island distinguishes
+  failure / no-results-for-this-search / genuinely-empty.
+- **Sorting goes through `ContactRepository::SORTABLE`, never a query
+  parameter.** There is no other dynamic `ORDER BY` in this codebase and there
+  should not be one; the `q` search also escapes `%`/`_` so a search for "50%"
+  does not match everything.
+- **`notifications()` resolves the repository from the container captured in
+  `register()`**, because it is called outside a route and has no `$app`. It
+  must never throw (a first-boot service has no DB) — the base's feed, and with
+  it the shell's poll on *every* page, matters more than this module's events.
+  The cursor is the highest `contact_message.id` and only advances past rows
+  actually handed over, so a burst larger than `NOTIFY_MAX` is not skipped.
 - **The reply outcome is a toast (tds-shared `>=0.16.0`); the two things that
   are NOT outcomes stay in-flow** — "Antwort darf nicht leer sein." (validation,
   next to the box it is about) and "E-Mail-Versand ist nicht konfiguriert."
@@ -46,6 +72,10 @@ is the dedicated public inbox.
 - **CP2:** `contact_reply` table + `ip_hash` column; IP-hash rate-limit on the
   public submit (429); admin reply-by-email endpoint (core Mailer → `contact_reply`
   → auto-handle); frontend detail view (full body + reply history + compose).
+- **CP3:** the transport fix (`apiFetch`) that made the inbox visible at all;
+  `GET /contact/messages` gains `q`/`sort`/`dir`/`limit` + an `excerpt`;
+  client-side grouping (email/name/company/registrable domain, freemail-flagged);
+  `NotificationSource` so a new request toasts live and refreshes the open list.
 - **TODO (next):** optional forward to support-tickets; per-message spam heuristics.
 
 ## Tests
@@ -54,6 +84,11 @@ is the dedicated public inbox.
 npm run test:run    # vitest, 85 tests (jsdom per-file via a @vitest-environment docblock)
 ```
 
+- `islands/grouping.test.ts` — the registrable-domain reduction (subdomains
+  collapse, two-label suffixes survive, an unknown suffix degrades to a coarser
+  heading rather than a wrong group) and that grouping PRESERVES the server's
+  order: re-sorting groups alphabetically would silently override the sort the
+  user just picked.
 - `islands/ContactInbox.test.tsx` — triage + the detail view + the email reply.
   Every message came from a stranger on the public marketing site, so a non-OK
   response is asserted never to put their name, address or words on screen.

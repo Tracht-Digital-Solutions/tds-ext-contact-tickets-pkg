@@ -44,9 +44,17 @@ function holdRequests(match: RegExp) {
   };
 }
 
+/**
+ * Path + query of a request. The island calls an ABSOLUTE URL now (via
+ * `apiFetch` — a relative one would hit the panel's own static host and come
+ * back as SPA fallback HTML with a 200), so the route matchers below keep their
+ * `^/…` anchors by matching the path rather than the whole URL.
+ */
+const pathOf = (url: string) => url.replace(/^https?:\/\/[^/]+/i, "");
+
 function respond(match: RegExp, body: unknown, status = 200, method?: string) {
   handlers.unshift((url, init) => {
-    if (!match.test(url)) return undefined;
+    if (!match.test(pathOf(url))) return undefined;
     if (method && (init?.method ?? "GET") !== method) return undefined;
     return { status, body };
   });
@@ -86,7 +94,7 @@ beforeEach(() => {
       const method = init?.method ?? "GET";
       calls.push({ url, method, body: typeof init?.body === "string" ? JSON.parse(init.body) : undefined });
       const g = gate;
-      if (g && g.match.test(url)) await g.promise;
+      if (g && g.match.test(pathOf(url))) await g.promise;
       const reply = handlers.map((h) => h(url, init)).find((r) => r !== undefined)!;
       return { ok: reply.status < 300, status: reply.status, json: async () => reply.body } as Response;
     }),
@@ -99,7 +107,11 @@ afterEach(() => {
 });
 
 const user = () => userEvent.setup({ delay: null });
-const sent = (method: string, match: RegExp) => calls.filter((c) => c.method === method && match.test(c.url));
+const sent = (method: string, match: RegExp) =>
+  calls.filter((c) => c.method === method && match.test(pathOf(c.url)));
+
+/** The query the island asked the server for, as a URLSearchParams. */
+const queryOf = (url: string) => new URLSearchParams(pathOf(url).split("?")[1] ?? "");
 
 async function open(messages: unknown[] = []) {
   respond(/^\/contact\/messages(\?|$)/, { messages }, 200, "GET");
@@ -119,9 +131,17 @@ async function openDetail(u: ReturnType<typeof user>, detail: unknown = DETAIL) 
 describe("the inbox", () => {
   it("shows the NEW requests first — the ones nobody has answered", async () => {
     await open();
-    expect(calls[0]!.url).toBe("/contact/messages?status=new");
+    expect(queryOf(calls[0]!.url).get("status")).toBe("new");
     const fetchMock = fetch as unknown as ReturnType<typeof vi.fn>;
     expect(fetchMock.mock.calls[0]![1]).toMatchObject({ credentials: "include" });
+  });
+
+  it("calls the API host, NOT the panel's own origin", async () => {
+    // A relative path resolves against management.tracht-digital.de, whose SPA
+    // fallback answers 200 + HTML — `res.ok` true, `json()` throwing, and the
+    // catch rendering "Keine Anfragen." with the rows sitting in the database.
+    await open();
+    expect(calls[0]!.url.startsWith("https://api.tracht-digital.de/contact/messages")).toBe(true);
   });
 
   it("shows a loading line until the list arrives", () => {
@@ -139,20 +159,26 @@ describe("the inbox", () => {
   it("filters to handled", async () => {
     const u = await open();
     await u.click(screen.getByRole("button", { name: "Erledigt" }));
-    await waitFor(() => expect(calls.some((c) => c.url === "/contact/messages?status=handled")).toBe(true));
+    await waitFor(() =>
+      expect(calls.some((c) => queryOf(c.url).get("status") === "handled")).toBe(true),
+    );
   });
 
   it("filters to spam", async () => {
     const u = await open();
     await u.click(screen.getByRole("button", { name: "Spam" }));
-    await waitFor(() => expect(calls.some((c) => c.url === "/contact/messages?status=spam")).toBe(true));
+    await waitFor(() =>
+      expect(calls.some((c) => queryOf(c.url).get("status") === "spam")).toBe(true),
+    );
   });
 
   it("drops the filter entirely for Alle", async () => {
     // `?status=` would filter for the empty status, not for "no filter".
     const u = await open();
     await u.click(screen.getByRole("button", { name: "Alle" }));
-    await waitFor(() => expect(calls.some((c) => c.url === "/contact/messages")).toBe(true));
+    await waitFor(() =>
+      expect(calls.some((c) => !queryOf(c.url).has("status"))).toBe(true),
+    );
   });
 
   it("marks the active filter", async () => {
@@ -187,14 +213,29 @@ describe("the inbox", () => {
     // not put them on screen.
     respond(/^\/contact\/messages(\?|$)/, { messages: [MESSAGE] }, 403, "GET");
     render(<ContactInbox />);
-    expect(await screen.findByText("Keine Anfragen.")).toBeTruthy();
+    expect(await screen.findByRole("alert")).toBeTruthy();
     expect(screen.queryByText(/Erika Muster/)).toBeNull();
+  });
+
+  it("SAYS the load failed instead of claiming there are no requests", async () => {
+    // This is the shape of the original bug: a failure that renders as a calm
+    // empty inbox is indistinguishable from an actually empty one, so nobody
+    // goes looking. A load failure is a persistent state, so it belongs in the
+    // flow as an alert — not a toast that fades.
+    respond(/^\/contact\/messages(\?|$)/, { messages: [] }, 500, "GET");
+    render(<ContactInbox />);
+    expect(await screen.findByRole("alert")).toHaveProperty(
+      "textContent",
+      "Anfragen konnten nicht geladen werden.",
+    );
+    expect(screen.queryByText("Keine Anfragen.")).toBeNull();
   });
 
   it("leaves the loading state even when the request rejects", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => { throw new TypeError("offline"); }));
     render(<ContactInbox />);
-    expect(await screen.findByText("Keine Anfragen.")).toBeTruthy();
+    expect(await screen.findByRole("alert")).toBeTruthy();
+    expect(screen.getByText("Keine Daten.")).toBeTruthy();
   });
 
   it("tolerates a response with no messages field", async () => {
@@ -243,12 +284,12 @@ describe("triage", () => {
     // the chip that is highlighted.
     const u = await open([MESSAGE]);
     await u.click(screen.getByRole("button", { name: "Alle" }));
-    await waitFor(() => expect(calls.some((c) => c.url === "/contact/messages")).toBe(true));
+    await waitFor(() => expect(calls.some((c) => !queryOf(c.url).has("status"))).toBe(true));
     await u.click(await action("Erledigt"));
     await waitFor(() => expect(sent("PATCH", /messages\/7$/)).toHaveLength(1));
     const after = calls.slice(calls.findIndex((c) => c.method === "PATCH"));
-    expect(after.some((c) => c.method === "GET" && c.url === "/contact/messages")).toBe(true);
-    expect(after.some((c) => c.url === "/contact/messages?status=new")).toBe(false);
+    expect(after.some((c) => c.method === "GET" && !queryOf(c.url).has("status"))).toBe(true);
+    expect(after.some((c) => queryOf(c.url).get("status") === "new")).toBe(false);
   });
 
   it("hides the Erledigt action on an already-handled message", async () => {
@@ -340,15 +381,18 @@ describe("reading a message", () => {
   });
 
   it("does NOT render a message body carried by a non-OK response", async () => {
-    // These are a stranger's words to us; a denied response must not show
-    // them. (The view then stays on its loading line — pinned as the current
-    // behaviour, though a real error state would be friendlier.)
+    // These are a stranger's words to us; a denied response must not show them.
     const u = await open([MESSAGE]);
     respond(/^\/contact\/messages\/7$/, DETAIL, 403, "GET");
     await u.click(await screen.findByRole("button", { name: /Erika Muster/ }));
     await waitFor(() => expect(sent("GET", /^\/contact\/messages\/7$/)).toHaveLength(1));
     expect(screen.queryByText("Guten Tag, wir bräuchten eine neue Website.")).toBeNull();
-    expect(screen.getByLabelText("Wird geladen")).toBeTruthy();
+    // It used to sit on "Wird geladen …" forever, which reads as a hung page.
+    expect(await screen.findByRole("alert")).toHaveProperty(
+      "textContent",
+      "Anfrage konnte nicht geladen werden.",
+    );
+    expect(screen.queryByLabelText("Wird geladen")).toBeNull();
   });
 
   it("returns to the inbox and re-reads the list", async () => {
@@ -483,5 +527,150 @@ describe("replying by email", () => {
     await u.click(button);
     await waitFor(() => expect(toasts.some((t) => t.variant === "success" && t.message.includes("Antwort gesendet"))).toBe(true));
     expect(button.disabled).toBe(false);
+  });
+});
+
+describe("search, sort and grouping", () => {
+  it("sends the default sort so the server never has to guess", async () => {
+    await open();
+    const q = queryOf(calls[0]!.url);
+    expect(q.get("sort")).toBe("created_at");
+    expect(q.get("dir")).toBe("desc");
+  });
+
+  it("searches on the SERVER, debounced into one request", async () => {
+    // The list is capped server-side, so filtering client-side would search
+    // only the rows that happened to fit — exactly the trap grouping documents.
+    const u = await open([MESSAGE]);
+    const before = calls.length;
+    await u.type(screen.getByRole("searchbox"), "muster");
+    await waitFor(() => expect(calls.length).toBeGreaterThan(before));
+    const searched = calls.filter((c) => queryOf(c.url).get("q") === "muster");
+    expect(searched).toHaveLength(1);
+  });
+
+  it("keeps the status filter while searching", async () => {
+    const u = await open([MESSAGE]);
+    await u.type(screen.getByRole("searchbox"), "muster");
+    await waitFor(() =>
+      expect(
+        calls.some((c) => queryOf(c.url).get("q") === "muster" && queryOf(c.url).get("status") === "new"),
+      ).toBe(true),
+    );
+  });
+
+  it("re-queries the server when the sort changes", async () => {
+    const u = await open([MESSAGE]);
+    await u.selectOptions(screen.getByLabelText("Sortierung"), screen.getByRole("option", { name: "Name A–Z" }));
+    await waitFor(() =>
+      expect(
+        calls.some((c) => queryOf(c.url).get("sort") === "name" && queryOf(c.url).get("dir") === "asc"),
+      ).toBe(true),
+    );
+  });
+
+  it("groups WITHOUT going back to the server", async () => {
+    // Grouping is a view over rows already fetched; a round trip here would be
+    // latency for nothing.
+    const u = await open([MESSAGE, { ...MESSAGE, id: 8, name: "Max Zweit", email: "max@gmx.de" }]);
+    await screen.findByText(/Max Zweit/);
+    const before = calls.length;
+    await u.selectOptions(screen.getByLabelText("Gruppieren"), "domain");
+    expect(await screen.findByText("example.de")).toBeTruthy();
+    expect(screen.getByText("gmx.de")).toBeTruthy();
+    expect(calls.length).toBe(before);
+  });
+
+  it("marks a freemail group so it does not read as one company", async () => {
+    const u = await open([
+      { ...MESSAGE, id: 8, name: "Max Zweit", email: "max@gmx.de" },
+      { ...MESSAGE, id: 9, name: "Ann Dritt", email: "ann@gmx.de" },
+    ]);
+    await u.selectOptions(screen.getByLabelText("Gruppieren"), "domain");
+    expect(await screen.findByText("Freemail")).toBeTruthy();
+  });
+
+  it("renders no group headings when grouping is off", async () => {
+    await open([MESSAGE]);
+    expect(screen.queryByRole("heading", { level: 3 })).toBeNull();
+  });
+
+  it("shows the excerpt when the form collected no subject", async () => {
+    // The public form has no subject field, so without this every row reads
+    // "Ohne Betreff" and has to be opened before it can be triaged.
+    await open([{ ...MESSAGE, subject: null, excerpt: "Guten Tag, wir bräuchten …" }]);
+    expect(await screen.findByText("Guten Tag, wir bräuchten …")).toBeTruthy();
+  });
+
+  it("prefers a real subject over the excerpt", async () => {
+    await open([{ ...MESSAGE, excerpt: "Guten Tag, wir bräuchten …" }]);
+    expect(await screen.findByText("Angebot Website")).toBeTruthy();
+    expect(screen.queryByText("Guten Tag, wir bräuchten …")).toBeNull();
+  });
+
+  it("says 'Keine Treffer' for an empty SEARCH, not 'Keine Anfragen'", async () => {
+    const u = await open([MESSAGE]);
+    respond(/^\/contact\/messages(\?|$)/, { messages: [] }, 200, "GET");
+    await u.type(screen.getByRole("searchbox"), "nichts");
+    expect(await screen.findByText("Keine Treffer.")).toBeTruthy();
+  });
+});
+
+describe("live updates", () => {
+  const announce = (module: string) =>
+    window.dispatchEvent(new CustomEvent("tds:notification", { detail: { module, id: `${module}:9` } }));
+
+  it("reloads when the shell announces a new contact request", async () => {
+    // "Und außerdem soll sie erscheinen": an inbox left open must not sit
+    // behind a toast saying something arrived.
+    await open([MESSAGE]);
+    const before = sent("GET", /^\/contact\/messages(\?|$)/).length;
+    announce("contact-tickets");
+    await waitFor(() =>
+      expect(sent("GET", /^\/contact\/messages(\?|$)/).length).toBeGreaterThan(before),
+    );
+  });
+
+  it("RELOADS UNDER THE CURRENT filter and search, not a hardcoded one", async () => {
+    const u = await open([MESSAGE]);
+    // Scoped to the chip bar: a row carries its own "Spam" action button.
+    const chips = document.querySelectorAll(".tds-toolbar")[0] as HTMLElement;
+    await u.click(within(chips).getByRole("button", { name: "Spam" }));
+    await waitFor(() => expect(calls.some((c) => queryOf(c.url).get("status") === "spam")).toBe(true));
+    const before = calls.length;
+    announce("contact-tickets");
+    await waitFor(() => expect(calls.length).toBeGreaterThan(before));
+    expect(queryOf(calls[calls.length - 1]!.url).get("status")).toBe("spam");
+  });
+
+  it("ignores another module's notifications", async () => {
+    await open([MESSAGE]);
+    const before = calls.length;
+    announce("tickets");
+    await new Promise((r) => setTimeout(r, 20));
+    expect(calls.length).toBe(before);
+  });
+
+  it("stops listening after unmount", async () => {
+    await open([MESSAGE]);
+    cleanup();
+    const before = calls.length;
+    announce("contact-tickets");
+    await new Promise((r) => setTimeout(r, 20));
+    expect(calls.length).toBe(before);
+  });
+});
+
+describe("triage failures", () => {
+  it("SAYS a rejected status change failed, with the HTTP status", async () => {
+    // It used to await the PATCH and drop the response: a 403 reloaded the
+    // list, the row stayed exactly where it was, and the click read as a no-op.
+    const u = await open([MESSAGE]);
+    respond(/^\/contact\/messages\/7$/, { error: "Forbidden" }, 403, "PATCH");
+    const row = screen.getAllByRole("listitem")[0]!;
+    await u.click(within(row).getByRole("button", { name: "Erledigt" }));
+    await waitFor(() =>
+      expect(toasts.some((t) => t.variant === "danger" && t.message.includes("403"))).toBe(true),
+    );
   });
 });
