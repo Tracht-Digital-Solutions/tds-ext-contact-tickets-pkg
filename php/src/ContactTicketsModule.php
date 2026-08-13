@@ -10,6 +10,7 @@ use Psr\Http\Message\ServerRequestInterface as Request;
 use Slim\App;
 use Tds\Ext\ContactTickets\Domain\ContactRepository;
 use Tds\Frontend\Contract\AbstractModule;
+use Tds\Frontend\Contract\ApiDocSource;
 use Tds\Frontend\Contract\Email;
 use Tds\Frontend\Contract\Mailer;
 use Tds\Frontend\Contract\NotificationSource;
@@ -22,7 +23,7 @@ use Tds\Frontend\Contract\UserContext;
  * a contact_message, and (best-effort) the admin is notified via the core Mailer.
  * The admin inbox (`/contact/*`) is gated by `contact:read`/`contact:write`.
  */
-final class ContactTicketsModule extends AbstractModule implements NotificationSource
+final class ContactTicketsModule extends AbstractModule implements NotificationSource, ApiDocSource
 {
     private const STATUSES = ['new', 'handled', 'spam'];
 
@@ -332,5 +333,16 @@ final class ContactTicketsModule extends AbstractModule implements NotificationS
     {
         $res->getBody()->write(json_encode($data, JSON_THROW_ON_ERROR));
         return $res->withStatus($status)->withHeader('Content-Type', 'application/json');
+    }
+
+    /**
+     * Route documentation for the admin frontend's API reference. Kept in its
+     * own file so the prose does not sit in the middle of the wiring.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function apiDocs(): array
+    {
+        return require __DIR__ . '/../docs/api.php';
     }
 }

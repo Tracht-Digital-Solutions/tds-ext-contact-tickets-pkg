@@ -130,3 +130,20 @@ Verified by mutation: 44 deliberate breakages introduced, 44 caught.
 ## After a change
 
 Bump `version` in `package.json` + `composer.json` (lockstep), update docs, commit.
+
+## API-Referenz (`php/docs/api.php`)
+
+This module implements the contract's optional `ApiDocSource`: `php/docs/api.php`
+returns one entry per route (summary, params, responses, required permission),
+and the admin frontend's API reference joins it onto the introspected Slim routes
+by `"<METHOD> <pattern>"`. Two things to know before editing a route:
+
+- **`pattern` must be the Slim pattern verbatim**, inline regex included
+  (`/contact/messages/{id:[0-9]+}`). A prettified path silently produces an orphan doc *and* an
+  undocumented route rather than an error.
+- **`php/tests/ContactTicketsApiDocsTest.php` asserts both directions** — the documented
+  set and the registered set must be the same set, every path placeholder must
+  be described, and a named permission must exist in `permissions()`. Adding or
+  renaming a route without touching `docs/api.php` fails there. That is the
+  point: prose next to code rots, and a reference full of confident, wrong
+  detail is worse than the bare route list it replaced.
