@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { primeRuntimeConfig } from "@tracht-digital-solutions/tds-shared/api";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import WidgetBody from "./WidgetBody";
 
 /**
@@ -32,12 +33,22 @@ beforeEach(() => {
 
 afterEach(() => cleanup());
 
+// apiFetch consults the host-side runtime config (/tds-runtime.json) before it
+// resolves a URL, so without this the first entry in fetch.mock.calls is that
+// probe rather than the endpoint under test. The panel products never ship the
+// file — they render <meta name="tds-api-base"> instead — so "absent" is also
+// what actually happens in production.
+beforeEach(() => primeRuntimeConfig(null));
+
 describe("the widget", () => {
-  it("fetches its summary endpoint with credentials, on the API host", () => {
+  it("fetches its summary endpoint with credentials, on the API host", async () => {
     // Absolute, not relative: the panel is a static site on its own host, and
     // its SPA fallback would answer a relative path with 200 + HTML — so the
     // json() throws and the catch renders a confident, permanently wrong 0.
-    render(<WidgetBody />);
+    render(<WidgetBody />);    
+    // apiFetch awaits the host-side runtime config before it resolves a URL,
+    // so the request leaves on a later microtask than the render.
+    await waitFor(() => expect(fetch).toHaveBeenCalled());
     const fetchMock = fetch as unknown as ReturnType<typeof vi.fn>;
     expect(fetchMock.mock.calls[0]![0]).toBe("https://api.tracht-digital.de/contact/summary");
     expect(fetchMock.mock.calls[0]![1]).toMatchObject({ credentials: "include" });
