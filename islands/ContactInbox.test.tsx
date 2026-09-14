@@ -27,6 +27,7 @@ import { TOAST_EVENT } from "@tracht-digital-solutions/tds-shared/toast";
 interface Reply {
   status: number;
   body: unknown;
+  unreachable?: boolean;
 }
 type Handler = (url: string, init?: RequestInit) => Reply | undefined;
 
@@ -58,6 +59,15 @@ function respond(match: RegExp, body: unknown, status = 200, method?: string) {
     if (!match.test(pathOf(url))) return undefined;
     if (method && (init?.method ?? "GET") !== method) return undefined;
     return { status, body };
+  });
+}
+
+/** A request that never reaches the API: fetch itself rejects, as it does offline. */
+function unreachable(match: RegExp, method?: string) {
+  handlers.unshift((url, init) => {
+    if (!match.test(pathOf(url))) return undefined;
+    if (method && (init?.method ?? "GET") !== method) return undefined;
+    return { status: 0, body: null, unreachable: true };
   });
 }
 
@@ -97,6 +107,7 @@ beforeEach(() => {
       const g = gate;
       if (g && g.match.test(pathOf(url))) await g.promise;
       const reply = handlers.map((h) => h(url, init)).find((r) => r !== undefined)!;
+      if (reply.unreachable) throw new TypeError("Failed to fetch");
       return { ok: reply.status < 300, status: reply.status, json: async () => reply.body } as Response;
     }),
   );
@@ -502,6 +513,17 @@ describe("replying by email", () => {
     expect((box() as HTMLTextAreaElement).value).toBe("Guten Tag, gerne.");
   });
 
+  it("KEEPS the typed reply when the send never reaches the API", async () => {
+    // fetch rejects offline; unhandled, the send ended without a word.
+    unreachable(/reply$/, "POST");
+    const u = await openReply();
+    await u.type(box(), "Guten Tag, gerne.");
+    await u.click(screen.getByRole("button", { name: "Antwort senden" }));
+    await waitFor(() => expect(toasts.some((t) => t.variant === "danger" && t.message.includes("nicht erreichbar"))).toBe(true));
+    expect((box() as HTMLTextAreaElement).value).toBe("Guten Tag, gerne.");
+    expect((screen.getByRole("button", { name: "Antwort senden" }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
   it("does not re-read the thread after a failed send", async () => {
     respond(/reply$/, { error: "nope" }, 500, "POST");
     const u = await openReply();
@@ -679,6 +701,17 @@ describe("triage failures", () => {
     await u.click(within(row).getByRole("button", { name: "Erledigt" }));
     await waitFor(() =>
       expect(toasts.some((t) => t.variant === "danger" && t.message.includes("403"))).toBe(true),
+    );
+  });
+
+  it("SAYS a status change that never reached the API failed", async () => {
+    const u = await open([MESSAGE]);
+    unreachable(/^\/contact\/messages\/7$/, "PATCH");
+    await screen.findByText(/Erika Muster/);
+    const row = screen.getAllByRole("listitem")[0]!;
+    await u.click(within(row).getByRole("button", { name: "Erledigt" }));
+    await waitFor(() =>
+      expect(toasts.some((t) => t.variant === "danger" && t.message.includes("nicht erreichbar"))).toBe(true),
     );
   });
 });

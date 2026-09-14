@@ -129,7 +129,13 @@ export default function ContactInbox() {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status }),
-    });
+    }).catch(() => null);
+    if (res === null) {
+      // apiFetch rejects when the request never reaches the API; uncaught, the
+      // click did nothing and said nothing.
+      toast.danger("Status konnte nicht geändert werden — die API ist nicht erreichbar.");
+      return;
+    }
     if (!res.ok) {
       // Never swallow the response: a 403 used to reload the list and leave the
       // row exactly where it was, which reads as "the click did nothing".
@@ -337,8 +343,13 @@ function MessageView({ id, onBack }: { id: number; onBack: () => void }) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ body: reply }),
-    });
+    }).catch(() => null);
     setBusy(false);
+    if (res === null) {
+      // The typed reply stays in the box for another attempt.
+      toast.danger("Antwort konnte nicht gesendet werden — die API ist nicht erreichbar.");
+      return;
+    }
     if (res.ok) {
       setReply("");
       toast.success("Antwort gesendet.");
