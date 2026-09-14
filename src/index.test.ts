@@ -191,10 +191,15 @@ describe("composition", () => {
     expect(() => composeExtensions([manifest, { ...manifest }])).toThrow();
   });
 
-  it("surfaces its route, nav entry and settings panel through the composition", () => {
+  it("surfaces its route and nav entry through the composition", () => {
     const composed = composeExtensions([manifest]);
     expect(composed.routes.map((r) => r.pattern)).toContain("/kontakt");
     expect(composed.nav.map((n) => n.id)).toContain("contact-tickets");
-    expect(composed.settings.map((s) => s.id)).toContain("contact-tickets");
+  });
+
+  it("contributes no settings section while there is nothing to set", () => {
+    // The old one printed a placeholder sentence onto the production settings
+    // page under its own heading.
+    expect(composeExtensions([manifest]).settings.map((s) => s.id)).not.toContain("contact-tickets");
   });
 });

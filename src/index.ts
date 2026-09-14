@@ -40,14 +40,10 @@ export default defineExtension({
       order: 20,
     },
   ],
-  settings: [
-    {
-      id: "contact-tickets",
-      label: "Kontaktanfragen",
-      island: "@tracht-digital-solutions/tds-ext-contact-tickets/islands/Settings.astro",
-      order: 35,
-    },
-  ],
+  // No `settings` section. It used to render "Kontaktanfragen-Einstellungen
+  // (Benachrichtigungs-Empfänger folgt)." on the production settings page — a
+  // placeholder with nothing to set. Add the contribution back together with
+  // the first real setting.
   routes: [
     {
       pattern: "/kontakt",
