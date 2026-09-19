@@ -54,6 +54,15 @@ is the dedicated public inbox.
   (something an operator has to go and set). That banner is `.tds-alert--danger`
   now. Never mount a `ToastHost` here; the frontend host owns the one.
 
+- **Motion comes from `tds-shared/motion/react` (peer `>=0.38.2`).** Inbox ↔
+  message is a `Presence` swap, rows and replies are `AnimatedList` /
+  `AnimatedItem`, the status chips carry a `TabIndicator`, the in-flow
+  validation banner is a `Collapse`. The inbox is a JSX variable, not an
+  inner component — a component declared inside `ContactInbox` would be a new
+  type every render and the search box would lose focus on each keystroke. A
+  leaving element is `aria-hidden` + `inert` while it fades, so tests assert
+  THAT rather than the node being gone.
+
 - Migration class names are **module-prefixed** (`ContactTickets*`) AND the
   numeric **version prefixes are globally unique** (this module owns the
   `20260726*` band) — every composed module's migrations share one `phinxlog`,

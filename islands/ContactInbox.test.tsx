@@ -545,7 +545,10 @@ describe("replying by email", () => {
     await u.type(box(), "Guten Tag, gerne.");
     await u.click(screen.getByRole("button", { name: "Antwort senden" }));
     await waitFor(() => expect(replies()).toHaveLength(1));
-    expect(screen.queryByText("Antwort darf nicht leer sein.")).toBeNull();
+    // It may still be fading out (Collapse), but from the first frame of that
+    // exit it is aria-hidden + inert — gone for anyone it could mislead.
+    const stale = screen.queryByText("Antwort darf nicht leer sein.");
+    expect(stale === null || stale.closest('[aria-hidden="true"][inert]') !== null).toBe(true);
     release();
     await waitFor(() => expect(toasts.some((t) => t.variant === "success" && t.message.includes("Antwort gesendet"))).toBe(true));
   });

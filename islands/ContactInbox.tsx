@@ -1,5 +1,12 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { Spinner, toast } from "@tracht-digital-solutions/tds-shared/components";
+import {
+  AnimatedItem,
+  AnimatedList,
+  Collapse,
+  Presence,
+  TabIndicator,
+} from "@tracht-digital-solutions/tds-shared/motion/react";
 import { apiFetch } from "@tracht-digital-solutions/tds-shared/api";
 import {
   GROUP_LABELS,
@@ -150,30 +157,22 @@ export default function ContactInbox() {
     [messages, groupBy],
   );
 
-  if (openId !== null) {
-    return (
-      <MessageView
-        id={openId}
-        onBack={() => {
-          setOpenId(null);
-          void load();
-        }}
-      />
-    );
-  }
-
-  return (
+  // Plain JSX, not an inner component: a component defined in here would be a
+  // NEW type on every render, remounting the list — and the search box would
+  // lose focus on every keystroke.
+  const inbox = (
     <div className="tds-stack">
       <div className="tds-toolbar">
         {STATUS_CHIPS.map((s) => (
           <button
             key={s.value || "all"}
             type="button"
-            className={`chip chip--${filter === s.value ? "info" : "neutral"}`}
+            className={`chip tds-tab chip--${filter === s.value ? "info" : "neutral"}`}
             aria-pressed={filter === s.value}
             onClick={() => setFilter(s.value)}
           >
             {s.label}
+            {filter === s.value ? <TabIndicator group="contact-status" /> : null}
           </button>
         ))}
       </div>
@@ -239,15 +238,34 @@ export default function ContactInbox() {
       ) : (
         groups.map((group) => (
           <GroupSection key={group.key} group={group} grouped={groupBy !== ""}>
-            <ul className="tds-list">
+            {/* A row triaged out of the current filter fades out and the rest
+                close the gap, instead of the list jumping under the cursor. */}
+            <AnimatedList className="tds-list">
               {group.items.map((m) => (
                 <Row key={m.id} message={m} onOpen={() => setOpenId(m.id)} onStatus={setStatus} />
               ))}
-            </ul>
+            </AnimatedList>
           </GroupSection>
         ))
       )}
     </div>
+  );
+
+  // Inbox ↔ one message: cross-faded in place rather than swapped in a frame.
+  return (
+    <Presence view={openId === null ? "inbox" : `message-${openId}`}>
+      {openId !== null ? (
+        <MessageView
+          id={openId}
+          onBack={() => {
+            setOpenId(null);
+            void load();
+          }}
+        />
+      ) : (
+        inbox
+      )}
+    </Presence>
   );
 }
 
@@ -288,7 +306,7 @@ function Row({
   // triageable without opening it.
   const secondary = m.subject || m.excerpt || null;
   return (
-    <li className="tds-list__row">
+    <AnimatedItem className="tds-list__row">
       <button type="button" className="btn btn-ghost tds-row" onClick={onOpen}>
         <span>
           <strong>{m.name}</strong> &lt;{m.email}&gt;
@@ -308,7 +326,7 @@ function Row({
           </button>
         ) : null}
       </span>
-    </li>
+    </AnimatedItem>
   );
 }
 
@@ -396,16 +414,17 @@ function MessageView({ id, onBack }: { id: number; onBack: () => void }) {
           {msg.replies.length > 0 ? (
             <div className="tds-stack">
               <h3>Antworten</h3>
-              <ul>
+              {/* A reply just sent slides into the thread. */}
+              <AnimatedList>
                 {msg.replies.map((r) => (
-                  <li key={r.id}>
+                  <AnimatedItem key={r.id}>
                     <div className="marginalia">
                       {r.sent_by ?? "Admin"} · {r.created_at}
                     </div>
                     <div>{r.body}</div>
-                  </li>
+                  </AnimatedItem>
                 ))}
-              </ul>
+              </AnimatedList>
             </div>
           ) : null}
 
@@ -421,11 +440,11 @@ function MessageView({ id, onBack }: { id: number; onBack: () => void }) {
             {/* Validation and the "email not configured" hint stay here —
                 the first names something to fix in the box above it, the second
                 something an operator has to go and set. */}
-            {status ? (
+            <Collapse open={Boolean(status)}>
               <p className="tds-alert tds-alert--danger" role="alert">
                 {status}
               </p>
-            ) : null}
+            </Collapse>
             <button
               type="button"
               className="btn btn-primary"
