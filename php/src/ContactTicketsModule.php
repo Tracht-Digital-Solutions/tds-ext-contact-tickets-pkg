@@ -16,6 +16,7 @@ use Tds\Frontend\Contract\Mailer;
 use Tds\Frontend\Contract\NotificationSource;
 use Tds\Frontend\Contract\PermissionDef;
 use Tds\Frontend\Contract\UserContext;
+use Tds\Frontend\Contract\ModuleHttp;
 
 /**
  * Backend Module for the contact-form inbox. `POST /contact` is PUBLIC (the
@@ -25,6 +26,8 @@ use Tds\Frontend\Contract\UserContext;
  */
 final class ContactTicketsModule extends AbstractModule implements NotificationSource, ApiDocSource
 {
+    use ModuleHttp;
+
     private const STATUSES = ['new', 'handled', 'spam'];
 
     /** Most new requests one notification poll announces. */
@@ -321,23 +324,6 @@ final class ContactTicketsModule extends AbstractModule implements NotificationS
     {
         $v = trim((string) ($value ?? ''));
         return $v === '' ? null : mb_substr($v, 0, $limit);
-    }
-
-    private static function require(UserContext $user, string $permission, Response $res): ?Response
-    {
-        if (!$user->isAuthenticated()) {
-            return self::json($res, ['error' => 'Unauthorized'], 401);
-        }
-        if (!$user->has($permission)) {
-            return self::json($res, ['error' => 'Forbidden'], 403);
-        }
-        return null;
-    }
-
-    private static function json(Response $res, mixed $data, int $status = 200): Response
-    {
-        $res->getBody()->write(json_encode($data, JSON_THROW_ON_ERROR));
-        return $res->withStatus($status)->withHeader('Content-Type', 'application/json');
     }
 
     /**
