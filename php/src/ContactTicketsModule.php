@@ -300,7 +300,12 @@ final class ContactTicketsModule extends AbstractModule implements NotificationS
         $ip = '';
         $fwd = (string) ($server['HTTP_X_FORWARDED_FOR'] ?? '');
         if ($fwd !== '') {
-            $ip = trim(explode(',', $fwd)[0]);
+            // The LAST entry: it is the one our own proxy appended. The first
+            // is whatever the client sent, so every request could claim a
+            // fresh address and the rate limit never applied.
+            $parts = array_map('trim', explode(',', $fwd));
+            $last = (string) end($parts);
+            $ip = filter_var($last, FILTER_VALIDATE_IP) !== false ? $last : '';
         }
         if ($ip === '') {
             $ip = (string) ($server['REMOTE_ADDR'] ?? '');
