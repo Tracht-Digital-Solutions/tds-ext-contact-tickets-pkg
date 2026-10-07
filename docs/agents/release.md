@@ -17,6 +17,8 @@ by Git tag (the Composer release ref).
   lockfile (a win32 lockfile breaks the Linux runner).
 - `PACKAGE_TOKEN` installs the contract and publishes this package; CI sets `NPM_TOKEN`
   from it.
+- Pruning old package versions (newest 5 prereleases, 10 stable) is `continue-on-error`
+  housekeeping and needs `delete:packages` on the token.
 - tds-shared stays declared as a **peer** dependency. Omitting it still builds (the
   product's copy resolves), which hides the omission until someone installs standalone.
 - Products pin extensions with a 0.x caret, which is minor-locked. A minor bump here
