@@ -184,7 +184,7 @@ export default function ContactInbox() {
         <label className="tds-field-row">
           Suche
           <input
-            className="field"
+            className="field-boxed"
             type="search"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
@@ -194,7 +194,7 @@ export default function ContactInbox() {
         <label className="tds-field-row">
           Sortierung
           <select
-            className="field"
+            className="field-boxed"
             value={String(sortIndex)}
             onChange={(e) => setSortIndex(Number(e.target.value))}
           >
@@ -208,7 +208,7 @@ export default function ContactInbox() {
         <label className="tds-field-row">
           Gruppieren
           <select
-            className="field"
+            className="field-boxed"
             value={groupBy}
             onChange={(e) => setGroupBy(e.target.value as GroupKey)}
           >
