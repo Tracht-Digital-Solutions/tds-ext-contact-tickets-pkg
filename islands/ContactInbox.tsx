@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
-import { Spinner, toast } from "@tracht-digital-solutions/tds-shared/components";
+import { Alert, Spinner, toast } from "@tracht-digital-solutions/tds-shared/components";
 import {
   AnimatedItem,
   AnimatedList,
@@ -7,7 +7,7 @@ import {
   Presence,
   TabIndicator,
 } from "@tracht-digital-solutions/tds-shared/motion/react";
-import { apiFetch } from "@tracht-digital-solutions/tds-shared/api";
+import { apiFetch, sendJson } from "@tracht-digital-solutions/tds-shared/api";
 import {
   GROUP_LABELS,
   groupMessages,
@@ -44,7 +44,6 @@ interface MessageDetail extends Message {
  * `fetch("/contact/messages")` would hit the product host, get the SPA
  * fallback HTML with a 200, and end up in the catch below as an empty inbox.
  */
-const api = apiFetch;
 
 /** Sort options, in the order the select offers them. */
 const SORTS: { value: string; dir: "asc" | "desc"; label: string }[] = [
@@ -97,7 +96,7 @@ export default function ContactInbox() {
     params.set("sort", sort.value);
     params.set("dir", sort.dir);
     try {
-      const res = await api(`/contact/messages?${params}`);
+      const res = await apiFetch(`/contact/messages?${params}`);
       if (!res.ok) {
         // A load failure is a persistent state, not a transient outcome, so it
         // belongs in the flow — and it must be distinguishable from "no
@@ -132,11 +131,7 @@ export default function ContactInbox() {
   }, [load]);
 
   const setStatus = async (m: Message, status: string) => {
-    const res = await api(`/contact/messages/${m.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status }),
-    }).catch(() => null);
+    const res = await sendJson(`/contact/messages/${m.id}`, "PATCH", { status }).catch(() => null);
     if (res === null) {
       // apiFetch rejects when the request never reaches the API; uncaught, the
       // click did nothing and said nothing.
@@ -222,9 +217,9 @@ export default function ContactInbox() {
       </div>
 
       {failed ? (
-        <p className="tds-alert tds-alert--danger" role="alert">
+        <Alert>
           Anfragen konnten nicht geladen werden.
-        </p>
+        </Alert>
       ) : null}
 
       {messages === null ? (
@@ -338,7 +333,7 @@ function MessageView({ id, onBack }: { id: number; onBack: () => void }) {
   const [busy, setBusy] = useState(false);
 
   const load = () =>
-    api(`/contact/messages/${id}`)
+    apiFetch(`/contact/messages/${id}`)
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
       .then((d) => {
         setMsg(d);
@@ -357,11 +352,7 @@ function MessageView({ id, onBack }: { id: number; onBack: () => void }) {
     }
     setBusy(true);
     setStatus(null);
-    const res = await api(`/contact/messages/${id}/reply`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ body: reply }),
-    }).catch(() => null);
+    const res = await sendJson(`/contact/messages/${id}/reply`, "POST", { body: reply }).catch(() => null);
     setBusy(false);
     if (res === null) {
       // The typed reply stays in the box for another attempt.
@@ -387,9 +378,9 @@ function MessageView({ id, onBack }: { id: number; onBack: () => void }) {
       </button>
       {loadFailed ? (
         // Used to sit on "Wird geladen …" forever on a failed load.
-        <p className="tds-alert tds-alert--danger" role="alert">
+        <Alert>
           Anfrage konnte nicht geladen werden.
-        </p>
+        </Alert>
       ) : msg === null ? (
         <p>
           <Spinner />
@@ -441,9 +432,9 @@ function MessageView({ id, onBack }: { id: number; onBack: () => void }) {
                 the first names something to fix in the box above it, the second
                 something an operator has to go and set. */}
             <Collapse open={Boolean(status)}>
-              <p className="tds-alert tds-alert--danger" role="alert">
+              <Alert>
                 {status}
-              </p>
+              </Alert>
             </Collapse>
             <button
               type="button"

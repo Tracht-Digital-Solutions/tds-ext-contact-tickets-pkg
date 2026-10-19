@@ -91,14 +91,14 @@ describe("the widget", () => {
   it("does not render a count carried by a NON-OK response", async () => {
     reply = { status: 403, body: { new: 99 } };
     render(<WidgetBody />);
-    expect(await screen.findByText("0")).toBeTruthy();
+    expect(await screen.findByText("—")).toBeTruthy();
     expect(screen.queryByText("99")).toBeNull();
   });
 
   it("still resolves to a rendered tile when the request rejects", async () => {
     reply = "reject";
     render(<WidgetBody />);
-    expect(await screen.findByText("0")).toBeTruthy();
+    expect(await screen.findByText("—")).toBeTruthy();
     expect(document.querySelector('[aria-busy="true"]')).toBeNull();
   });
 });
